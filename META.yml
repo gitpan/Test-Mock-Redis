@@ -1,0 +1,32 @@
+---
+abstract: 'use Redis; without redis'
+author:
+  - 'Jeff Lavallee <jeff@zeroclue.com>'
+build_requires:
+  Test::More: 0
+configure_requires:
+  Module::Build: 0.36
+generated_by: 'Module::Build version 0.3607'
+license: perl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: Test-Mock-Redis
+provides:
+  Test::Mock::Redis:
+    file: lib/Test/Mock/Redis.pm
+    version: 0.01
+  Test::Mock::Redis::PossiblyVolitile:
+    file: lib/Test/Mock/Redis.pm
+  Test::Mock::Redis::Set:
+    file: lib/Test/Mock/Redis.pm
+  Test::Mock::Redis::ZSet:
+    file: lib/Test/Mock/Redis.pm
+requires:
+  Scalar::Util: 0
+  Test::More: 0
+resources:
+  bugtracker: http://rt.cpan.org/NoAuth/Bugs.html?Dist=Test-Mock-Redis
+  license: http://dev.perl.org/licenses/
+  repository: http://github.com/jlavallee/Test-Mock-Redis/
+version: 0.01
