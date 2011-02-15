@@ -12,11 +12,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 =head1 SYNOPSIS
 
@@ -27,6 +27,15 @@ tests without needing a running redis instance.
 
     my $redis = Test::Mock::Redis->new(server => 'whatever');
     ...
+
+    $redis->set($key, 'some value');
+
+    $redis->get($key);
+
+This module is designed to function as a drop in replacement for
+Redis.pm for testing purposes.
+
+See perldoc Redis and the redis documentation at L<http://redis.io>
     
 
 =head1 SUBROUTINES/METHODS
@@ -37,15 +46,23 @@ tests without needing a running redis instance.
 
     It can be used in place of a Redis object for unit testing.
 
+    If you pass the server to "connect" to, it will be ignored.
+
 =cut
 
+sub _new_db {
+    tie my %hash, 'Test::Mock::Redis::PossiblyVolitile'; 
+    return \%hash;
+}
+
+my $NUM_DBS = 16;
+
 our %defaults = (
-    _quit     => 0,
-    _stash    => [ map { tie %$_, 'Test::Mock::Redis::PossiblyVolitile'; $_ }
-                       map { {} } (1..16)
-                 ],
-    _db_index => 0,
-    _up_since => time,
+    _quit      => 0,
+    _stash     => [ map { _new_db } (1..$NUM_DBS) ],
+    _db_index  => 0,
+    _up_since  => time,
+    _last_save => time,
 );
 
 sub new {
@@ -60,6 +77,14 @@ sub ping {
     my $self = shift;
 
     return !$self->{_quit};
+}
+
+sub auth {
+    my $self = shift;
+
+    die '[auth] ERR wrong number of arguments for \'auth\' command' unless @_;
+
+    return 1;
 }
 
 sub quit {
@@ -84,23 +109,37 @@ sub set {
 sub setnx {
     my ( $self, $key, $value ) = @_;
 
-    unless($self->exists($key)){
-        $self->_stash->{$key} = "$value";
-        return 1;
-    }
-    return 0;
+    return 0 if $self->exists($key);
+
+    $self->_stash->{$key} = "$value";
+
+    return 1;
 }
 
 sub setex {
     my ( $self, $key, $value, $ttl ) = @_;
     $self->set($key, $value);
-    return $self->expire($key, $ttl);
+    $self->expire($key, $ttl);
+    return 1;
 }
 
 sub expire {
     my ( $self, $key, $ttl ) = @_;
 
     return $self->expireat($key, time + $ttl);
+}
+
+sub expireat {
+    my ( $self, $key, $when ) = @_;
+
+    return 0 unless exists $self->_stash->{$key};
+
+    my $slot = $self->_stash;
+    my $tied = tied(%$slot);
+
+    $tied->expire($key, $when);
+
+    return 1;
 }
 
 sub persist {
@@ -119,7 +158,7 @@ sub persist {
 sub ttl {
     my ( $self, $key, $ttl ) = @_;
 
-    return 0 unless exists $self->_stash->{$key};
+    return -1 unless exists $self->_stash->{$key};
 
     my $slot = $self->_stash;
     my $tied = tied(%$slot);
@@ -127,40 +166,40 @@ sub ttl {
     return $tied->ttl($key);
 }
 
-sub expireat {
-    my ( $self, $key, $when ) = @_;
-
-    return 0 unless exists $self->_stash->{$key};
-
-    my $slot = $self->_stash;
-    my $tied = tied(%$slot);
-
-    $tied->expire($key, $when);
-
-    return 1;
-}
-
 sub exists {
     my ( $self, $key ) = @_;
     return exists $self->_stash->{$key};
 }
 
-sub _delete_key_if_expired {
-    my ( $self, $key ) = @_;
-
-    delete $self->_stash->{$key}
-        if blessed $self->_stash->{$key} 
-         && $self->_stash->{$key}->isa('Test::Mock::Redis::Volitile')
-         && $self->_stash->{$key}->expired
-    ;
-    return $self; #chainable
-}
-
 sub get {
     my ( $self, $key  ) = @_;
 
-    return $self->_delete_key_if_expired($key)
-                ->_stash->{$key};
+    return $self->_stash->{$key};
+}
+
+sub append {
+    my ( $self, $key, $value ) = @_;
+
+    $self->_stash->{$key} .= $value;
+
+    return $self->strlen($key);
+}
+
+sub strlen {
+    my ( $self, $key ) = @_;
+    # TODO: do we need byte length?
+    return length $self->_stash->{$key};
+}
+
+sub getset {
+    my ( $self, $key, $value ) = @_;
+
+    #TODO: should return error when original value isn't a string
+    my $old_value = $self->_stash->{$key};
+
+    $self->set($key, $value);
+
+    return $old_value;
 }
 
 sub incr {
@@ -188,20 +227,39 @@ sub decr {
 sub decrby {
     my ( $self, $key, $decr ) = @_;
 
+    $self->_stash->{$key} ||= 0;
+
     return $self->_stash->{$key} -= $decr;
 }
 
 sub mget {
     my ( $self, @keys ) = @_;
 
-    return map { $self->_delete_key_if_expired($_)->_stash->{$_} } @keys;
+    return map { $self->_stash->{$_} } @keys;
+}
+
+sub mset {
+    my ( $self, %things ) = @_;
+
+    @{ $self->_stash }{keys %things} = (values %things);
+
+    return 1;
+}
+
+sub msetnx {
+    my ( $self, %things ) = @_;
+
+    $self->exists($_) && return 0 for keys %things;
+
+    @{ $self->_stash }{keys %things} = (values %things);
+
+    return 1;
 }
 
 sub del {
     my ( $self, $key ) = @_;
 
-    my $ret = $self->_delete_key_if_expired($key)
-                   ->exists($key);
+    my $ret = $self->exists($key);
 
     delete $self->_stash->{$key};
 
@@ -371,10 +429,7 @@ sub _stash {
 sub sadd {
     my ( $self, $key, $value ) = @_;
 
-    $self->_stash->{$key} = Test::Mock::Redis::Set->new
-        unless blessed $self->_stash->{$key} 
-            && $self->_stash->{$key}->isa( 'Test::Mock::Redis::Set' );
-
+    $self->_make_set($key);
     my $return = !exists $self->_stash->{$key}->{$value};
     $self->_stash->{$key}->{$value} = 1;
     return $return;
@@ -423,7 +478,7 @@ sub sinterstore {
 sub hset {
     my ( $self, $key, $hkey, $value ) = @_;
 
-    $self->_stash->{$key} ||= {};
+    $self->_make_hash($key);
 
     my $ret = !exists $self->_stash->{$key}->{$hkey};
     $self->_stash->{$key}->{$hkey} = "$value";
@@ -433,9 +488,9 @@ sub hset {
 sub hsetnx {
     my ( $self, $key, $hkey, $value ) = @_;
 
-    $self->_stash->{$key} ||= {};
-
     return 0 if exists $self->_stash->{$key}->{$hkey};
+
+    $self->_make_hash($key);
 
     $self->_stash->{$key}->{$hkey} = "$value";
     return 1;
@@ -444,7 +499,7 @@ sub hsetnx {
 sub hmset {
     my ( $self, $key, %hash ) = @_;
 
-    $self->_stash->{$key} ||= {};
+    $self->_make_hash($key);
 
     foreach my $hkey ( CORE::keys %hash ){
         $self->hset($key, $hkey, $hash{$hkey});
@@ -526,7 +581,13 @@ sub move {
 sub flushdb {
     my $self = shift;
 
-    $self->{_stash}->[$self->{_db_index}] = {}
+    $self->{_stash}->[$self->{_db_index}] = _new_db;
+}
+
+sub flushall {
+    my $self = shift;
+
+    $self->{_stash} = [ map { _new_db }(1..$NUM_DBS) ];
 }
 
 sub sort {
@@ -596,22 +657,32 @@ sub info {
         vm_enabled                 => '0',
         map { 'db'.$_ => sprintf('keys=%d,expires=%d',
                              scalar CORE::keys %{ $self->_stash($_) },
-                             0,
+                             $self->_expires_count_for_db($_),
                          )
             } grep { scalar CORE::keys %{ $self->_stash($_) } > 0 }
                 (0..15)
     };
 }
 
+sub _expires_count_for_db {
+    my ( $self, $db_index ) = @_;
+
+    my $slot = $self->_stash($db_index);
+    my $tied = tied(%$slot);
+
+    $tied->expire_count;
+}
+
 sub zadd {
     my ( $self, $key, $score, $value ) = @_;
 
-    $self->_stash->{$key} ||= {};
+    $self->_make_zset($key);
 
     my $ret = !exists $self->_stash->{$key}->{$value};
     $self->_stash->{$key}->{$value} = $score;
     return $ret;
 }
+
 
 sub zscore {
     my ( $self, $key, $value ) = @_;
@@ -723,21 +794,41 @@ sub zremrangebyscore {
 
 =head1 TODO
 
-Not all Redis functionality is implemented.  Pull requests welcome!
+Lots!
 
-=cut
+Not all Redis functionality is implemented.  The test files that output "TODO" are still to be done.
+
+The top of all test files [except 01-basic.t] has the list of commands tested or to-be tested in the file.
+
+Those marked with an "x" are pretty well-tested.
+Those marked with an "o" need help.
+Those that are unmarked have no tests, or are un-implemented.  For example:
+
+x   AUTH          <--- has some tests
+x   SET
+o   KEYS          <--- only partially tested and/or implemented
+    ZINTERSTORE   <--- not tested (or maybe not implemented)
+
+
+
+Beyond that, it would be neat to add methods to inspect how often keys were accessed and get other information that
+allows the module user to confirm that their code interacted with redis (or Test::Mock::Redis) as they expected.
 
 
 =head1 AUTHOR
 
 Jeff Lavallee, C<< <jeff at zeroclue.com> >>
 
+=head1 SEE ALSO
+
+The real Redis.pm client whose interface this module mimics: L<http://search.cpan.org/dist/Redis>
+
+
 =head1 BUGS
 
 Please report any bugs or feature requests to C<bug-mock-redis at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Mock-Redis>.  I will be notified, and then you'll
+the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Test-Mock-Redis>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
-
 
 
 
@@ -754,19 +845,19 @@ You can also look for information at:
 
 =item * RT: CPAN's request tracker
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Mock-Redis>
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Test-Mock-Redis>
 
 =item * AnnoCPAN: Annotated CPAN documentation
 
-L<http://annocpan.org/dist/Mock-Redis>
+L<http://annocpan.org/dist/Test-Mock-Redis>
 
 =item * CPAN Ratings
 
-L<http://cpanratings.perl.org/d/Mock-Redis>
+L<http://cpanratings.perl.org/d/Test-Mock-Redis>
 
 =item * Search CPAN
 
-L<http://search.cpan.org/dist/Mock-Redis/>
+L<http://search.cpan.org/dist/Test-Mock-Redis/>
 
 =back
 
@@ -790,7 +881,36 @@ See http://dev.perl.org/licenses/ for more information.
 
 =cut
 
+
+sub _make_hash {
+    my ( $self, $key ) = @_;
+
+    $self->_stash->{$key} = Test::Mock::Redis::Hash->new
+        unless blessed $self->_stash->{$key}
+            && $self->_stash->{$key}->isa('Test::Mock::Redis::Hash') ;
+}
+
+sub _make_zset {
+    my ( $self, $key ) = @_;
+
+    $self->_stash->{$key} = Test::Mock::Redis::ZSet->new
+        unless blessed $self->_stash->{$key}
+            && $self->_stash->{$key}->isa('Test::Mock::Redis::ZSet') ;
+}
+
+sub _make_set {
+    my ( $self, $key ) = @_;
+    $self->_stash->{$key} = Test::Mock::Redis::Set->new
+        unless blessed $self->_stash->{$key} 
+            && $self->_stash->{$key}->isa( 'Test::Mock::Redis::Set' );
+}
+
+
 1; # End of Test::Mock::Redis
+
+package Test::Mock::Redis::Hash;
+sub new { return bless {}, shift }
+1;
 
 package Test::Mock::Redis::ZSet;
 sub new { return bless {}, shift }
@@ -817,36 +937,52 @@ my $expires;
 sub FETCH {
     my ( $self, $key ) = @_;
 
-    delete $self->{$key}
-        if exists $expires->{$self->_expires_key($key)}
-           && time >= $expires->{$self->_expires_key($key)}
-    ;
+    $self->_delete_if_expired($key);
 
     return $self->{$key};
+}
+
+sub EXISTS {
+    my ( $self, $key ) = @_;
+
+    $self->_delete_if_expired($key);
+
+    return exists $self->{$key};
+}
+
+sub _delete_if_expired {
+    my ( $self, $key ) = @_;
+    if(exists $expires->{$self}->{$key}
+       && time >= $expires->{$self}->{$key}){
+        delete $self->{$key};
+        delete $expires->{$self}->{$key};
+    }
 }
 
 sub expire {
     my ( $self, $key, $time ) = @_;
 
-    $expires->{$self->_expires_key($key)} = $time;
+    $expires->{$self}->{$key} = $time;
+}
+
+sub expire_count {
+    my ( $self ) = @_;
+
+    # really, we should probably only count keys that haven't expired
+    scalar keys %{ $expires->{$self} };
 }
 
 sub persist {
     my ( $self, $key, $time ) = @_;
 
-    delete $expires->{$self->_expires_key($key)};
+    delete $expires->{$self}->{$key};
 }
 
 sub ttl {
     my ( $self, $key ) = @_;
 
-    return 0 unless exists $expires->{$self->_expires_key($key)};
-    return $expires->{$self->_expires_key($key)} - time;
-}
-
-sub _expires_key {
-    my ( $self, $key ) = @_;
-    return sprintf('__%s__%s', ref $self, $key);
+    return -1 unless exists $expires->{$self}->{$key};
+    return $expires->{$self}->{$key} - time;
 }
 
 
