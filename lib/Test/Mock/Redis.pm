@@ -3,6 +3,7 @@ package Test::Mock::Redis;
 use warnings;
 use strict;
 
+use Carp;
 use Config;
 use Scalar::Util qw/blessed/;
 
@@ -12,11 +13,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 =head1 SYNOPSIS
 
@@ -57,26 +58,45 @@ sub _new_db {
 
 my $NUM_DBS = 16;
 
-our %defaults = (
-    _quit      => 0,
-    _stash     => [ map { _new_db } (1..$NUM_DBS) ],
-    _db_index  => 0,
-    _up_since  => time,
-    _last_save => time,
-);
+sub _defaults {
+    return (
+        _quit      => 0,
+        _shutdown  => 0,
+        _stash     => [ map { _new_db } (1..$NUM_DBS) ],
+        _db_index  => 0,
+        _up_since  => time,
+        _last_save => time,
+    );
+}
+
+
+my $instances;
 
 sub new {
     my $class = shift;
     my %args = @_;
 
-    my $self = bless { %defaults, %args }, $class;
+    my $server = defined $args{server}
+               ? $args{'server'}
+               : 'localhost';
+
+    if( $instances->{$server} ){
+        $instances->{$server}->{_quit} = 0;
+        return $instances->{$server};
+    }
+
+    my $self = bless {$class->_defaults, server => $server}, $class;
+
+    $instances->{$server} = $self;
+
     return $self;
 }
 
 sub ping {
     my $self = shift;
 
-    return !$self->{_quit};
+    return !$self->{_shutdown}
+        && !$self->{_quit};
 }
 
 sub auth {
@@ -96,7 +116,7 @@ sub quit {
 sub shutdown {
     my $self = shift;
 
-    $self->{_quit} = 1;
+    $self->{_shutdown} = 1;
 }
 
 sub set {
@@ -270,21 +290,21 @@ sub type {
     my ( $self, $key ) = @_;
     # types are string, list, set, zset and hash
 
-    return 0 unless $self->exists($key);
+    return undef unless $self->exists($key);
 
     my $type = ref $self->_stash->{$key};
 
     return !$type 
          ? 'string'
-         : $type eq 'Test::Mock::Redis::Set'
-           ? 'set'
-           : $type eq 'Test::Mock::Redis::ZSet'
-             ? 'zset'
-             : $type eq 'HASH' 
-               ? 'hash'
-               : $type eq 'ARRAY' 
-                 ? 'list'
-                 : 'unknown'
+         : $type eq 'Test::Mock::Redis::Hash' 
+           ? 'hash'
+           : $type eq 'Test::Mock::Redis::Set'
+             ? 'set'
+             : $type eq 'Test::Mock::Redis::ZSet'
+               ? 'zset'
+                 : $type eq 'Test::Mock::Redis::List' 
+                   ? 'list'
+                   : 'unknown'
     ;
 }
 
@@ -334,8 +354,7 @@ sub dbsize {
 sub rpush {
     my ( $self, $key, $value ) = @_;
 
-    $self->_stash->{$key} = []
-        unless ref $self->_stash->{$key} eq 'ARRAY';
+    $self->_make_list($key);
 
     return push @{ $self->_stash->{$key} }, "$value";
 }
@@ -343,8 +362,26 @@ sub rpush {
 sub lpush {
     my ( $self, $key, $value ) = @_;
 
-    $self->_stash->{$key} = []
-        unless ref $self->_stash->{$key} eq 'ARRAY';
+    croak "[lpush] ERR Operation against a key holding the wrong kind of value"
+        unless !$self->exists($key) or $self->_is_list($key);
+
+    $self->_make_list($key);
+
+    return unshift @{ $self->_stash->{$key} }, "$value";
+}
+
+sub rpushx {
+    my ( $self, $key, $value ) = @_;
+
+    return unless $self->_is_list($key);
+
+    return push @{ $self->_stash->{$key} }, "$value";
+}
+
+sub lpushx {
+    my ( $self, $key, $value ) = @_;
+
+    return unless $self->_is_list($key);
 
     return unshift @{ $self->_stash->{$key} }, "$value";
 }
@@ -403,11 +440,15 @@ sub lrem {
 sub lpop {
     my ( $self, $key ) = @_;
 
+    return undef unless $self->exists($key);
+
     return shift @{ $self->_stash->{$key} };
 }
 
 sub rpop {
     my ( $self, $key ) = @_;
+
+    return undef unless $self->exists($key);
 
     return pop @{ $self->_stash->{$key} };
 }
@@ -882,6 +923,20 @@ See http://dev.perl.org/licenses/ for more information.
 =cut
 
 
+sub _is_list {
+    my ( $self, $key ) = @_;
+
+    return blessed $self->_stash->{$key}
+        && $self->_stash->{$key}->isa('Test::Mock::Redis::List') ;
+}
+
+sub _make_list {
+    my ( $self, $key ) = @_;
+
+    $self->_stash->{$key} = Test::Mock::Redis::List->new
+        unless $self->_is_list($key);
+}
+
 sub _make_hash {
     my ( $self, $key ) = @_;
 
@@ -907,6 +962,10 @@ sub _make_set {
 
 
 1; # End of Test::Mock::Redis
+
+package Test::Mock::Redis::List;
+sub new { return bless [], shift }
+1;
 
 package Test::Mock::Redis::Hash;
 sub new { return bless {}, shift }

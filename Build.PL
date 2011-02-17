@@ -14,13 +14,15 @@ my $builder = Module::Build->new(
             repository => 'http://github.com/jlavallee/Test-Mock-Redis/',
         },
         no_index => { package => [ 'Test::Mock::Redis::PossiblyVolitile',
-                                   'Test::Mock::Redis::Set',
+                                   'Test::Mock::Redis::Hash',
                                    'Test::Mock::Redis::ZSet',
+                                   'Test::Mock::Redis::Set',
                                  ],
                     },
     },
     build_requires => {
-        'Test::More' => 0,
+        'Test::More'      => 0,
+        'Test::Exception' => 0,
     },
     requires => {
         'Test::More'   => 0,
