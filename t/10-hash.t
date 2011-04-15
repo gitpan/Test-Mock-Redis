@@ -11,12 +11,12 @@ use Test::Mock::Redis;
 x   HDEL
 x   HEXISTS
 x   HGET
-    HGETALL
-    HINCRBY
+x   HGETALL
+x   HINCRBY
 x   HKEYS
 x   HLEN
-    HMGET
-    HMSET
+x   HMGET
+o   HMSET
 x   HSET
     HSETNX
     HVALS
@@ -32,16 +32,17 @@ if( $ENV{RELEASE_TESTING} ){
     ($guard, $srv) = redis();
     ok(my $r = Redis->new(server => $srv), 'connected to our test redis-server');
     $r->flushall;
-    push @redi, $r;
+    unshift @redi, $r
 }
 
 foreach my $r (@redi){
+    diag("testing $r") if $ENV{RELEASE_TESTING};
 
     is $r->hget('hash', 'foo'), undef, "hget for a hash that doesn't exist is undef";
 
     is_deeply([sort $r->hkeys('hash')], [], "hkeys returned no keys for a hash that doesn't exist");
 
-    ok $r->hset('hash', 'foo', 'foobar'), "hset returns true when it's happy";
+    is $r->hset('hash', 'foo', 'foobar'), 1, "hset returns 1 when it's happy";
 
     is $r->hget('hash', 'foo'), 'foobar', "hget returns the value we just set";
 
@@ -51,11 +52,11 @@ foreach my $r (@redi){
 
     ok $r->hset('hash', 'bar', 'foobar'), "hset returns true when it's happy";
 
-    is $r->hlen('hash'), 2, 'hlen counted two keys';
+    is $r->hlen('hash'), 2, "hlen counted two keys";
 
     is_deeply([sort $r->hkeys('hash')], [qw/bar foo/], 'hkeys returned our keys');
 
-    ok ! $r->hset('hash', 'bar', 'barfoo'), "hset returns false when they field already existed";
+    is $r->hset('hash', 'bar', 'barfoo'), 0, "hset returns 0 when they field already existed";
 
     is $r->hget('hash', 'bar'), 'barfoo', "hget returns the value we just set";
 
@@ -63,13 +64,15 @@ foreach my $r (@redi){
 
     is $r->get('hash'), 'blarg', "even though it squashed it";
 
-    throws_ok { $r->hset('hash', 'foo', 'foobar') } qr/^\Q[hset] ERR Operation against a key holding the wrong kind of value\E/,
-         "hset throws error when we overwrite a string with a hash";
+    throws_ok { $r->hset('hash', 'foo', 'foobar') } 
+        qr/^\Q[hset] ERR Operation against a key holding the wrong kind of value\E/,
+        "hset throws error when we overwrite a string with a hash";
 
     ok ! $r->hexists('blarg', 'blorf'), "hexists on a hash that doesn't exist returns false";
 
-    throws_ok { $r->hexists('hash', 'blarg') } qr/^\Q[hexists] ERR Operation against a key holding the wrong kind of value\E/,
-         "hexists on a field that's not a hash throws error";
+    throws_ok { $r->hexists('hash', 'blarg') } 
+        qr/^\Q[hexists] ERR Operation against a key holding the wrong kind of value\E/,
+        "hexists on a field that's not a hash throws error";
 
     $r->del('hash');
 
@@ -84,9 +87,66 @@ foreach my $r (@redi){
 
     ok ! $r->hexists('hash', 'foo'), "hdel really deleted the field";
 
-    is $r->hlen('hash'), 0, 'hlen counted zarro keys';
+    is $r->hlen('hash'), 0, "hlen counted zarro keys";
 
     is_deeply([sort $r->hkeys('hash')], [], "hkeys returned no keys for an empty hash");
+
+    $r->set('not a hash', 'foo bar');
+
+    throws_ok { $r->hkeys('not a hash') } 
+         qr/^\Q[hkeys] ERR Operation against a key holding the wrong kind of value\E/,
+         "hkeys on key that isn't a hash throws error";
+
+    # OK seems inconsistient
+    is $r->hmset('hash', qw/foo bar bar baz baz qux qux quux quux quuux/), 'OK', "hmset returns OK if it set some stuff";
+
+    is_deeply { $r->hgetall('hash') }, { foo => 'bar', bar => 'baz', baz => 'qux', qux => 'quux', quux => 'quuux' },
+        "hget all returned our whole hash";
+
+    is_deeply { $r->hgetall("I don't exist") }, { }, "hgetall on non-existent key is empty";
+
+    throws_ok { $r->hgetall('not a hash') } 
+         qr/^\Q[hgetall] ERR Operation against a key holding the wrong kind of value\E/,
+         "hgetall on key that isn't a hash throws error";
+
+
+    is_deeply [sort $r->hvals('hash')], [sort qw/bar baz qux quux quuux/],
+        "hvals all returned all values";
+
+    is_deeply [ $r->hvals("I don't exist") ], [ ], "hvals on non-existent key returned an empty list";
+
+    $r->set('not a hash', 'foo bar');
+
+    throws_ok { $r->hvals('not a hash') } 
+         qr/^\Q[hvals] ERR Operation against a key holding the wrong kind of value\E/,
+         "hvals on key that isn't a hash throws error";
+    
+
+    is_deeply [ $r->hmget('hash', qw/foo bar baz/) ], [ qw/bar baz qux/ ],
+        "hmget returns requested values";
+
+    is_deeply [ $r->hmget('hash', qw/blarg foo bar baz blorf/) ], [ undef, qw/bar baz qux/, undef ],
+        "hmget returns undef for missing values";
+
+    is_deeply [ $r->hmget('hash', qw/blarg blorf/) ], [ undef, undef ],
+        "hmget returns undef even if all values are missing";
+
+    throws_ok { $r->hincrby('hash', 'foo') }
+        qr/^\Q[hincrby] ERR wrong number of arguments for 'hincrby' command\E/,
+        "hincerby dies when called with the wrong number of arguments";
+
+    throws_ok { $r->hincrby('hash', 'foo', 1) }
+        qr/^\Q[hincrby] ERR hash value is not an integer\E/, 
+         "hincrby dies when a non-integer is incremented";
+
+    is $r->hincrby('hash', 'incrme', 1), 1, "incrby 1 on a value that doesn't exist returns 1";
+    is $r->hincrby('hash', 'incrmf', 2), 2, "incrby 2 on a value that doesn't exist returns 2";
+
+    is $r->hincrby('hash', 'incrmf', -1), 1, "incrby returns value resulting from increment";
+
+    is $r->hset('hash', 'emptystr', ''), 1, "can set hash value to empty string";
+
+    is $r->hincrby('hash', 'emptystr', 1), 1, "incrby 1 on the empty string returns 1";
 }
 
 

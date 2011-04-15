@@ -13,11 +13,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.04
+Version 0.05
 
 =cut
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 =head1 SYNOPSIS
 
@@ -27,11 +27,12 @@ tests without needing a running redis instance.
     use Test::Mock::Redis;
 
     my $redis = Test::Mock::Redis->new(server => 'whatever');
-    ...
 
     $redis->set($key, 'some value');
 
     $redis->get($key);
+
+    ...
 
 This module is designed to function as a drop in replacement for
 Redis.pm for testing purposes.
@@ -188,9 +189,9 @@ sub ttl {
     return $tied->ttl($key);
 }
 
-sub exists {
+sub exists :method {
     my ( $self, $key ) = @_;
-    return exists $self->_stash->{$key};
+    return exists $self->_stash->{$key} ? 1 : 0;
 }
 
 sub get {
@@ -309,21 +310,21 @@ sub type {
     ;
 }
 
-sub keys {
+sub keys :method {
     my ( $self, $match ) = @_;
 
     # TODO: we're not escaping other meta-characters
     $match =~ s/(?<!\\)\*/.*/g;
     $match =~ s/(?<!\\)\?/.?/g;
 
-    return @{[ sort { $a cmp $b } grep { /$match/ } CORE::keys %{ $self->_stash }]};
+    return @{[ sort { $a cmp $b } grep { /$match/ } keys %{ $self->_stash }]};
 }
 
 sub randomkey {
     my $self = shift;
 
-    return ( CORE::keys %{ $self->_stash } )[
-                int(rand( scalar CORE::keys %{ $self->_stash } ))
+    return ( keys %{ $self->_stash } )[
+                int(rand( scalar keys %{ $self->_stash } ))
             ]
     ;
 }
@@ -349,7 +350,7 @@ sub renamenx {
 sub dbsize {
     my $self = shift;
 
-    return scalar CORE::keys %{ $self->_stash };
+    return scalar keys %{ $self->_stash };
 }
 
 sub rpush {
@@ -363,7 +364,7 @@ sub rpush {
 sub lpush {
     my ( $self, $key, $value ) = @_;
 
-    croak "[lpush] ERR Operation against a key holding the wrong kind of value"
+    confess "[lpush] ERR Operation against a key holding the wrong kind of value"
         unless !$self->exists($key) or $self->_is_list($key);
 
     $self->_make_list($key);
@@ -474,7 +475,9 @@ sub sadd {
     my ( $self, $key, $value ) = @_;
 
     $self->_make_set($key);
-    my $return = !exists $self->_stash->{$key}->{$value};
+    my $return = exists $self->_stash->{$key}->{$value}
+               ? 0
+               : 1;
     $self->_stash->{$key}->{$value} = 1;
     return $return;
 }
@@ -482,21 +485,66 @@ sub sadd {
 sub scard {
     my ( $self, $key ) = @_;
 
-    return scalar CORE::keys %{ $self->_stash->{$key} };
+    return $self->_is_set($key)
+         ? scalar $self->smembers($key)
+         : 0;
 }
 
 sub sismember {
     my ( $self, $key, $value ) = @_;
 
-    return exists $self->_stash->{$key}->{$value};
+    return exists $self->_stash->{$key}->{$value}
+            ? 1 
+            : 0;
 }
 
 sub srem {
     my ( $self, $key, $value ) = @_;
 
-    my $ret = exists $self->_stash->{$key}->{$value};
+    return 0 unless exists $self->_stash->{$key}
+                 && exists $self->_stash->{$key}->{$value};
+
     delete $self->_stash->{$key}->{$value};
-    return $ret;
+    return 1;
+}
+
+sub spop {
+    my ( $self, $key ) = @_;
+
+    return undef unless $self->_is_set($key);
+
+    my $value = $self->srandmember($key);
+    delete $self->_stash->{$key}->{$value};
+    return $value;
+}
+
+sub smove {
+    my ( $self, $source, $dest, $value ) = @_;
+
+    confess "[smove] ERR Operation against a key holding the wrong kind of value"
+        if ( $self->exists($source) and not $self->_is_set($source) )
+        or ( $self->exists($dest)   and not $self->_is_set($dest)   );
+
+    if( (delete $self->_stash->{$source}->{$value}) ){
+        $self->_make_set($dest) unless $self->_is_set($dest);
+        $self->_stash->{$dest}->{$value} = 1;
+        return 1;
+    }
+    return 0;  # guess it wasn't in there
+}
+
+sub srandmember {
+    my ( $self, $key ) = @_;
+
+    return undef unless $self->_is_set($key);
+
+    return ($self->smembers($key))[rand int $self->scard($key)];
+}
+
+sub smembers {
+    my ( $self, $key ) = @_;
+
+    return keys %{ $self->_stash->{$key} };
 }
 
 sub sinter {
@@ -505,10 +553,10 @@ sub sinter {
     my $r = {};
 
     foreach my $key (@keys){
-        $r->{$_}++ for CORE::keys %{ $self->_stash->{$key} };
+        $r->{$_}++ for keys %{ $self->_stash->{$key} };
     }
 
-    return grep { $r->{$_} >= @keys } CORE::keys %$r;
+    return grep { $r->{$_} >= @keys } keys %$r;
 }
 
 sub sinterstore {
@@ -519,15 +567,58 @@ sub sinterstore {
     return $self->scard($dest);
 }
 
+sub sunion {
+    my ( $self, @keys ) = @_;
+
+    my $r = {};
+
+    foreach my $key (@keys){
+        $r->{$_}++ for keys %{ $self->_stash->{$key} };
+    }
+
+    return grep { $r->{$_} >= 1 } keys %$r;
+}
+
+sub sunionstore {
+    my ( $self, $dest, @keys ) = @_;
+
+    $self->_stash->{$dest} = { map { $_ => 1 } $self->sunion(@keys) };
+    bless $self->_stash->{$dest}, 'Test::Mock::Redis::Set';
+    return $self->scard($dest);
+}
+
+sub sdiff {
+    my ( $self, $start, @keys ) = @_;
+
+    my $r = { map { $_ => 0 } keys %{ $self->_stash->{$start} } };
+
+    foreach my $key (@keys){
+        $r->{$_}++ for keys %{ $self->_stash->{$key} };
+    }
+
+    return grep { $r->{$_} == 0 } keys %$r;
+}
+
+sub sdiffstore {
+    my ( $self, $dest, $start, @keys ) = @_;
+
+    $self->_stash->{$dest} = { map { $_ => 1 } $self->sdiff($start, @keys) };
+    bless $self->_stash->{$dest}, 'Test::Mock::Redis::Set';
+    return $self->scard($dest);
+}
+
 sub hset {
     my ( $self, $key, $hkey, $value ) = @_;
 
-    croak "[hset] ERR Operation against a key holding the wrong kind of value"
-        unless !$self->exists($key) or $self->_is_hash($key);
+    confess '[hset] ERR Operation against a key holding the wrong kind of value'
+         if $self->exists($key) and !$self->_is_hash($key);
+
 
     $self->_make_hash($key);
 
-    my $ret = !exists $self->_stash->{$key}->{$hkey};
+    my $ret = exists $self->_stash->{$key}->{$hkey}
+            ? 0
+            : 1;
     $self->_stash->{$key}->{$hkey} = $value;
     return $ret;
 }
@@ -548,11 +639,11 @@ sub hmset {
 
     $self->_make_hash($key);
 
-    foreach my $hkey ( CORE::keys %hash ){
+    foreach my $hkey ( keys %hash ){
         $self->hset($key, $hkey, $hash{$hkey});
     }
 
-    return 1;
+    return 'OK';
 }
 
 sub hget {
@@ -591,7 +682,20 @@ sub hdel {
 }
 
 sub hincrby {
+    confess "[hincrby] ERR wrong number of arguments for 'hincrby' command"
+        unless @_ == 4;
+
     my ( $self, $key, $hkey, $incr ) = @_;
+
+    confess '[hexists] ERR Operation against a key holding the wrong kind of value'
+         if $self->exists($key) and !$self->_is_hash($key);
+
+    confess "[hincrby] ERR hash value is not an integer"
+         if $self->hexists($key, $hkey)                   # it exists
+             and $self->hget($key, $hkey) !~ /^-?\d+$|^$/ # and it doesn't look like an integer (and it isn't empty)
+    ;
+
+    $self->_make_hash($key) unless $self->_is_hash($key);
 
     $self->_stash->{$key}->{$hkey} ||= 0;
 
@@ -609,21 +713,32 @@ sub hlen {
 sub hkeys {
     my ( $self, $key ) = @_;
 
-    return () unless $self->_is_hash($key);
+    confess '[hkeys] ERR Operation against a key holding the wrong kind of value'
+         if $self->exists($key) and !$self->_is_hash($key);
 
-    return CORE::keys %{ $self->_stash->{$key} };
+    return () unless $self->exists($key);
+
+    return keys %{ $self->_stash->{$key} };
 }
 
 sub hvals {
     my ( $self, $key ) = @_;
 
-    return CORE::values %{ $self->_stash->{$key} };
+    confess '[hvals] ERR Operation against a key holding the wrong kind of value'
+         if $self->exists($key) and !$self->_is_hash($key);
+
+    return values %{ $self->_stash->{$key} };
 }
 
 sub hgetall {
     my ( $self, $key ) = @_;
 
-    return %{ $self->_stash->{$key} };
+    confess "[hgetall] ERR Operation against a key holding the wrong kind of value"
+         if $self->exists($key) and !$self->_is_hash($key);
+
+    return $self->exists( $key )
+         ? %{ $self->_stash->{$key} }
+         : ();
 }
 
 sub move {
@@ -716,10 +831,10 @@ sub info {
         used_memory_human          => '3.74M',
         vm_enabled                 => '0',
         map { 'db'.$_ => sprintf('keys=%d,expires=%d',
-                             scalar CORE::keys %{ $self->_stash($_) },
+                             scalar keys %{ $self->_stash($_) },
                              $self->_expires_count_for_db($_),
                          )
-            } grep { scalar CORE::keys %{ $self->_stash($_) } > 0 }
+            } grep { scalar keys %{ $self->_stash($_) } > 0 }
                 (0..15)
     };
 }
@@ -738,7 +853,9 @@ sub zadd {
 
     $self->_make_zset($key);
 
-    my $ret = !exists $self->_stash->{$key}->{$value};
+    my $ret = exists $self->_stash->{$key}->{$value}
+            ? 0
+            : 1;
     $self->_stash->{$key}->{$value} = $score;
     return $ret;
 }
@@ -786,7 +903,7 @@ sub zrange {
                ( map { $_->[0] }
                      sort { $a->[1] <=> $b->[1] }
                          map { [ $_, $self->_stash->{$key}->{$_} ] }
-                             CORE::keys %{ $self->_stash->{$key} } 
+                             keys %{ $self->_stash->{$key} } 
                )[$start..$stop]
     ;
 }
@@ -800,7 +917,7 @@ sub zrevrange {
                ( map { $_->[0] }
                      sort { $b->[1] <=> $a->[1] }
                          map { [ $_, $self->_stash->{$key}->{$_} ] }
-                             CORE::keys %{ $self->_stash->{$key} } 
+                             keys %{ $self->_stash->{$key} } 
                )[$start..$stop]
     ;
 }
@@ -865,8 +982,9 @@ Those marked with an "o" need help.
 Those that are unmarked have no tests, or are un-implemented.  For example:
 
 x   AUTH          <--- has some tests
-x   SET
+
 o   KEYS          <--- only partially tested and/or implemented
+
     ZINTERSTORE   <--- not tested (or maybe not implemented)
 
 
@@ -972,20 +1090,36 @@ sub _make_hash {
         unless $self->_is_hash($key);
 }
 
-sub _make_zset {
+sub _is_set {
     my ( $self, $key ) = @_;
 
-    $self->_stash->{$key} = Test::Mock::Redis::ZSet->new
-        unless blessed $self->_stash->{$key}
-            && $self->_stash->{$key}->isa('Test::Mock::Redis::ZSet') ;
+    return $self->exists($key)
+        && blessed $self->_stash->{$key}
+        && $self->_stash->{$key}->isa('Test::Mock::Redis::Set') ;
 }
 
 sub _make_set {
     my ( $self, $key ) = @_;
+
     $self->_stash->{$key} = Test::Mock::Redis::Set->new
-        unless blessed $self->_stash->{$key} 
-            && $self->_stash->{$key}->isa( 'Test::Mock::Redis::Set' );
+        unless $self->_is_set($key);
 }
+
+sub _is_zset {
+    my ( $self, $key ) = @_;
+
+    return $self->exists($key)
+        && blessed $self->_stash->{$key}
+        && $self->_stash->{$key}->isa('Test::Mock::Redis::ZSet') ;
+}
+
+sub _make_zset {
+    my ( $self, $key ) = @_;
+
+    $self->_stash->{$key} = Test::Mock::Redis::ZSet->new
+        unless $self->_is_zset($key);
+}
+
 
 
 1; # End of Test::Mock::Redis
@@ -1023,9 +1157,9 @@ my $expires;
 sub FETCH {
     my ( $self, $key ) = @_;
 
-    $self->_delete_if_expired($key);
-
-    return $self->{$key};
+    return $self->EXISTS($key)
+         ? $self->{$key}
+         : undef;
 }
 
 sub EXISTS {
