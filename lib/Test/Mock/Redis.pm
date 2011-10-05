@@ -13,11 +13,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.05
+Version 0.07
 
 =cut
 
-our $VERSION = '0.05';
+our $VERSION = '0.07';
 
 =head1 SYNOPSIS
 
@@ -48,7 +48,7 @@ See perldoc Redis and the redis documentation at L<http://redis.io>
 
     It can be used in place of a Redis object for unit testing.
 
-    If you pass the server to "connect" to, it will be ignored.
+    It accepts the "server" argument, just like Redis.pm's new.
 
 =cut
 
@@ -313,6 +313,8 @@ sub type {
 sub keys :method {
     my ( $self, $match ) = @_;
 
+    confess q{[KEYS] ERR wrong number of arguments for 'keys' command} unless defined $match;
+
     # TODO: we're not escaping other meta-characters
     $match =~ s/(?<!\\)\*/.*/g;
     $match =~ s/(?<!\\)\?/.?/g;
@@ -337,6 +339,7 @@ sub rename {
     confess 'rename to existing key' if $whine && $self->_stash->{$to};
 
     $self->_stash->{$to} = $self->_stash->{$from};
+    delete $self->_stash->{$from};
     return 1;
 }
 
