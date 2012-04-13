@@ -13,11 +13,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.07
+Version 0.08
 
 =cut
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 =head1 SYNOPSIS
 
@@ -292,7 +292,7 @@ sub type {
     my ( $self, $key ) = @_;
     # types are string, list, set, zset and hash
 
-    return undef unless $self->exists($key);
+    return 'none' unless $self->exists($key);
 
     my $type = ref $self->_stash->{$key};
 
