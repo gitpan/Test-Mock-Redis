@@ -14,7 +14,7 @@ my $builder = Module::Build->new(
             bugtracker => 'http://rt.cpan.org/NoAuth/Bugs.html?Dist=Test-Mock-Redis',
             repository => 'http://github.com/jlavallee/Test-Mock-Redis/',
         },
-        no_index => { package => [ 'Test::Mock::Redis::PossiblyVolitile',
+        no_index => { package => [ 'Test::Mock::Redis::PossiblyVolatile',
                                    'Test::Mock::Redis::List',
                                    'Test::Mock::Redis::Hash',
                                    'Test::Mock::Redis::ZSet',
@@ -30,6 +30,7 @@ my $builder = Module::Build->new(
         'Test::More'   => 0,
         'Scalar::Util' => 0,
     },
+    configure_requires => { 'Module::Build' => 0.4 },
     add_to_cleanup     => [ 'Test-Mock-Redis-*' ],
     create_makefile_pl => 'traditional',
 );

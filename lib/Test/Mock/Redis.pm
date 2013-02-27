@@ -13,11 +13,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.08
+Version 0.09
 
 =cut
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 =head1 SYNOPSIS
 
@@ -38,7 +38,14 @@ This module is designed to function as a drop in replacement for
 Redis.pm for testing purposes.
 
 See perldoc Redis and the redis documentation at L<http://redis.io>
-    
+
+=head1 PERSISTENCE
+
+The "connection" to the mocked server (and its stored data) will persist beyond
+the object instance, just like a real Redis server. This means that you do not
+need to save the instance to this object in order to preserve your data; simply
+call C<new> with the same server parameter and the same instance will be
+returned, with all data preserved.
 
 =head1 SUBROUTINES/METHODS
 
@@ -53,7 +60,7 @@ See perldoc Redis and the redis documentation at L<http://redis.io>
 =cut
 
 sub _new_db {
-    tie my %hash, 'Test::Mock::Redis::PossiblyVolitile'; 
+    tie my %hash, 'Test::Mock::Redis::PossiblyVolatile';
     return \%hash;
 }
 
@@ -319,7 +326,10 @@ sub keys :method {
     $match =~ s/(?<!\\)\*/.*/g;
     $match =~ s/(?<!\\)\?/.?/g;
 
-    return @{[ sort { $a cmp $b } grep { /$match/ } keys %{ $self->_stash }]};
+    return @{[ sort { $a cmp $b }
+        grep { exists $self->_stash->{$_} }
+        grep { /$match/ }
+        keys %{ $self->_stash }]};
 }
 
 sub randomkey {
@@ -1049,9 +1059,17 @@ Salvatore Sanfilippo for redis, of course!
 
 Dobrica Pavlinusic & Pedro Melo for Redis.pm
 
+The following people have contributed to I<Test::Mock::Redis>:
+
+=over
+
+=item * Karen Etheridge
+
+=back
+
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2011 Jeff Lavallee.
+Copyright 2011, 2012, 2013 Jeff Lavallee.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
@@ -1143,7 +1161,7 @@ package Test::Mock::Redis::Set;
 sub new { return bless {}, shift }
 1;
 
-package Test::Mock::Redis::PossiblyVolitile;
+package Test::Mock::Redis::PossiblyVolatile;
 
 use strict; use warnings;
 use Tie::Hash;

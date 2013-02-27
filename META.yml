@@ -6,8 +6,9 @@ build_requires:
   Test::Exception: 0
   Test::More: 0
 configure_requires:
-  Module::Build: 0.36
-generated_by: 'Module::Build version 0.3603'
+  Module::Build: 0.4
+dynamic_config: 1
+generated_by: 'Module::Build version 0.4, CPAN::Meta::Converter version 2.112150'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -15,7 +16,7 @@ meta-spec:
 name: Test-Mock-Redis
 no_index:
   package:
-    - Test::Mock::Redis::PossiblyVolitile
+    - Test::Mock::Redis::PossiblyVolatile
     - Test::Mock::Redis::List
     - Test::Mock::Redis::Hash
     - Test::Mock::Redis::ZSet
@@ -23,17 +24,22 @@ no_index:
 provides:
   Test::Mock::Redis:
     file: lib/Test/Mock/Redis.pm
-    version: 0.08
+    version: 0.09
   Test::Mock::Redis::Hash:
     file: lib/Test/Mock/Redis.pm
+    version: 0
   Test::Mock::Redis::List:
     file: lib/Test/Mock/Redis.pm
-  Test::Mock::Redis::PossiblyVolitile:
+    version: 0
+  Test::Mock::Redis::PossiblyVolatile:
     file: lib/Test/Mock/Redis.pm
+    version: 0
   Test::Mock::Redis::Set:
     file: lib/Test/Mock/Redis.pm
+    version: 0
   Test::Mock::Redis::ZSet:
     file: lib/Test/Mock/Redis.pm
+    version: 0
 requires:
   Scalar::Util: 0
   Test::More: 0
@@ -41,4 +47,4 @@ resources:
   bugtracker: http://rt.cpan.org/NoAuth/Bugs.html?Dist=Test-Mock-Redis
   license: http://dev.perl.org/licenses/
   repository: http://github.com/jlavallee/Test-Mock-Redis/
-version: 0.08
+version: 0.09
