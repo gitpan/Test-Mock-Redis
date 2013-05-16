@@ -13,11 +13,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.09
+Version 0.10
 
 =cut
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 =head1 SYNOPSIS
 
@@ -67,6 +67,7 @@ sub _new_db {
 my $NUM_DBS = 16;
 
 sub _defaults {
+    my @hex = (0..9, 'a'..'f');
     return (
         _quit      => 0,
         _shutdown  => 0,
@@ -74,6 +75,7 @@ sub _defaults {
         _db_index  => 0,
         _up_since  => time,
         _last_save => time,
+        _run_id    => (join '', map { $hex[rand @hex] } 1..40), # E.G. '0e7e19fc45139fdb26ff3dd35ca6725d9882f1b7',
     );
 }
 
@@ -113,14 +115,16 @@ sub auth {
 
     confess '[auth] ERR wrong number of arguments for \'auth\' command' unless @_;
 
-    return 1;
+    return 'OK';
 }
 
 sub quit {
     my $self = shift;
 
-    confess "Not connected to any server" if $self->{_quit};
+    my $return = !$self->{_quit};
+
     $self->{_quit} = 1;
+    return $return;
 }
 
 sub shutdown {
@@ -133,7 +137,7 @@ sub set {
     my ( $self, $key, $value ) = @_;
 
     $self->_stash->{$key} = "$value";
-    return 1;
+    return 'OK';
 }
 
 sub setnx {
@@ -150,7 +154,7 @@ sub setex {
     my ( $self, $key, $ttl, $value ) = @_;
     $self->set($key, $value);
     $self->expire($key, $ttl);
-    return 1;
+    return 'OK';
 }
 
 sub expire {
@@ -272,7 +276,7 @@ sub mset {
 
     @{ $self->_stash }{keys %things} = (values %things);
 
-    return 1;
+    return 'OK';
 }
 
 sub msetnx {
@@ -350,7 +354,7 @@ sub rename {
 
     $self->_stash->{$to} = $self->_stash->{$from};
     delete $self->_stash->{$from};
-    return 1;
+    return 'OK';
 }
 
 sub renamenx {
@@ -371,7 +375,8 @@ sub rpush {
 
     $self->_make_list($key);
 
-    return push @{ $self->_stash->{$key} }, "$value";
+    push @{ $self->_stash->{$key} }, "$value";
+    return scalar @{ $self->_stash->{$key} };
 }
 
 sub lpush {
@@ -382,7 +387,8 @@ sub lpush {
 
     $self->_make_list($key);
 
-    return unshift @{ $self->_stash->{$key} }, "$value";
+    unshift @{ $self->_stash->{$key} }, "$value";
+    return scalar @{ $self->_stash->{$key} };
 }
 
 sub rpushx {
@@ -390,7 +396,8 @@ sub rpushx {
 
     return unless $self->_is_list($key);
 
-    return push @{ $self->_stash->{$key} }, "$value";
+    push @{ $self->_stash->{$key} }, "$value";
+    return scalar @{ $self->_stash->{$key} };
 }
 
 sub lpushx {
@@ -398,7 +405,8 @@ sub lpushx {
 
     return unless $self->_is_list($key);
 
-    return unshift @{ $self->_stash->{$key} }, "$value";
+    unshift @{ $self->_stash->{$key} }, "$value";
+    return scalar @{ $self->_stash->{$key} };
 }
 
 sub llen {
@@ -419,7 +427,7 @@ sub ltrim {
     my ( $self, $key, $start, $end ) = @_;
 
     $self->_stash->{$key} = [ @{ $self->_stash->{$key} }[$start..$end] ]; 
-    return 1;
+    return 'OK';
 }
 
 sub lindex {
@@ -432,7 +440,7 @@ sub lset {
     my ( $self, $key, $index, $value ) = @_;
 
     $self->_stash->{$key}->[$index] = "$value";
-    return 1;
+    return 'OK';
 }
 
 sub lrem {
@@ -474,7 +482,7 @@ sub select {
     my ( $self, $index ) = @_;
 
     $self->{_db_index} = $index;
-    return 1;
+    return 'OK';
 }
 
 sub _stash {
@@ -799,7 +807,7 @@ sub sort {
 sub save { 
     my $self = shift;
     $self->{_last_save} = time;
-    return 1;
+    return 'OK';
 }
 
 sub bgsave { 
@@ -816,33 +824,62 @@ sub info {
     my $self = shift;
 
     return {
-        arch_bits                  => $Config{use64bitint } ? '64' : '32',
-        bgrewriteaof_in_progress   => '0',
-        bgsave_in_progress         => '0',
-        blocked_clients            => '0',
-        changes_since_last_save    => '0',
-        connected_clients          => '1',
-        connected_slaves           => '0',
-        expired_keys               => '0',
-        hash_max_zipmap_entries    => '64',
-        hash_max_zipmap_value      => '512',
-        last_save_time             => $self->{_last_save},
-        mem_fragmentation_ratio    => '0.11',
-        multiplexing_api           => 'kqueue',
-        process_id                 => $$,
-        pubsub_channels            => '0',
-        pubsub_patterns            => '0',
-        redis_git_dirty            => '0',
-        redis_git_sha1             => 'da14590b',
-        redis_version              => '2.1.4',
-        role                       => 'master',
-        total_commands_processed   => '84',
-        total_connections_received => '14',
+        aof_current_rewrite_time_sec => '-1',
+        aof_enabled => '0',
+        aof_last_bgrewrite_status => 'ok',
+        aof_last_rewrite_time_sec => '-1',
+        aof_rewrite_in_progress => '0',
+        aof_rewrite_scheduled => '0',
+        arch_bits => $Config{use64bitint } ? '64' : '32',
+        blocked_clients => '0',
+        client_biggest_input_buf => '0',
+        client_longest_output_list => '0',
+        connected_clients => '1',
+        connected_slaves => '0',
+        evicted_keys => '0',
+        expired_keys => '0',
+        gcc_version => '4.2.1',
+        instantaneous_ops_per_sec => '568',
+        keyspace_hits => '272',
+        keyspace_misses => '0',
+        latest_fork_usec => '0',
+        loading => '0',
+        lru_clock => '1994309',
+        mem_allocator => 'libc',
+        mem_fragmentation_ratio => '1.61',
+        multiplexing_api => 'kqueue',
+        os => $Config{osname}.' '.$Config{osvers},  # should be like 'Darwin 12.2.1 x86_64', this is close
+        process_id => $$,
+        pubsub_channels => '0',
+        pubsub_patterns => '0',
+        rdb_bgsave_in_progress => '0',
+        rdb_changes_since_last_save => '0',
+        rdb_current_bgsave_time_sec => '-1',
+        rdb_last_bgsave_status => 'ok',
+        rdb_last_bgsave_time_sec => '-1',
+        rdb_last_save_time => '1362120372',
+        redis_git_dirty => '0',
+        redis_git_sha1 => '34b420db',
+        redis_mode => 'standalone',
+        redis_version => '2.6.10',
+        rejected_connections => '0',
+        role => 'master',
+        run_id => $self->{_run_id},
+        tcp_port => '11084',
+        total_commands_processed => '1401',
+        total_connections_received => '1',
         uptime_in_days             => (time - $self->{_up_since}) / 60 / 60 / 24,
         uptime_in_seconds          => time - $self->{_up_since},
-        used_memory                => '3918288',
-        used_memory_human          => '3.74M',
-        vm_enabled                 => '0',
+        used_cpu_sys => '0.04',
+        used_cpu_sys_children => '0.00',
+        used_cpu_user => '0.02',
+        used_cpu_user_children => '0.00',
+        used_memory => '1056288',
+        used_memory_human => '1.01M',
+        used_memory_lua => '31744',
+        used_memory_peak => '1055728',
+        used_memory_peak_human => '1.01M',
+        used_memory_rss => '1699840',
         map { 'db'.$_ => sprintf('keys=%d,expires=%d',
                              scalar keys %{ $self->_stash($_) },
                              $self->_expires_count_for_db($_),
@@ -1075,7 +1112,7 @@ This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
 by the Free Software Foundation; or the Artistic License.
 
-See http://dev.perl.org/licenses/ for more information.
+See L<http://dev.perl.org/licenses/> for more information.
 
 
 =cut

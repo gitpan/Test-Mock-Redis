@@ -44,7 +44,7 @@
    "provides" : {
       "Test::Mock::Redis" : {
          "file" : "lib/Test/Mock/Redis.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       },
       "Test::Mock::Redis::Hash" : {
          "file" : "lib/Test/Mock/Redis.pm",
@@ -79,5 +79,5 @@
          "url" : "http://github.com/jlavallee/Test-Mock-Redis/"
       }
    },
-   "version" : "0.09"
+   "version" : "0.10"
 }
