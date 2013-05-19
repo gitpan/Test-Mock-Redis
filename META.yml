@@ -3,12 +3,13 @@ abstract: 'use Redis; without redis'
 author:
   - 'Jeff Lavallee <jeff@zeroclue.com>'
 build_requires:
-  Test::Exception: 0
-  Test::More: 0
+  Test::Deep: 0
+  Test::Fatal: 0
+  Test::More: 0.88
 configure_requires:
   Module::Build: 0.4
 dynamic_config: 1
-generated_by: 'Module::Build version 0.4, CPAN::Meta::Converter version 2.112150'
+generated_by: 'Module::Build version 0.4005, CPAN::Meta::Converter version 2.112150'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -24,7 +25,7 @@ no_index:
 provides:
   Test::Mock::Redis:
     file: lib/Test/Mock/Redis.pm
-    version: 0.10
+    version: 0.11
   Test::Mock::Redis::Hash:
     file: lib/Test/Mock/Redis.pm
     version: 0
@@ -41,10 +42,13 @@ provides:
     file: lib/Test/Mock/Redis.pm
     version: 0
 requires:
+  Class::Method::Modifiers: 0
+  Package::Stash: 0.34
   Scalar::Util: 0
-  Test::More: 0
+  Try::Tiny: 0
+  namespace::clean: 0
 resources:
   bugtracker: http://rt.cpan.org/NoAuth/Bugs.html?Dist=Test-Mock-Redis
   license: http://dev.perl.org/licenses/
   repository: http://github.com/jlavallee/Test-Mock-Redis/
-version: 0.10
+version: 0.11

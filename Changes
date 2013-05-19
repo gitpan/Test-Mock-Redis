@@ -42,3 +42,7 @@ Revision history for Test-Mock-Redis
                 lpush
                 rpushx
                 lpushx
+
+0.11    May 18 2013
+        atomic transactions ('multi', 'exec', 'discard') now supported:
+        http://redis.io/topics/transactions (Karen Etheridge)
