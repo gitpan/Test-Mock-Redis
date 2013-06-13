@@ -4,7 +4,7 @@
       "Jeff Lavallee <jeff@zeroclue.com>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.4005, CPAN::Meta::Converter version 2.112150",
+   "generated_by" : "Module::Build version 0.4005, CPAN::Meta::Converter version 2.131560",
    "license" : [
       "perl_5"
    ],
@@ -25,8 +25,9 @@
    "prereqs" : {
       "build" : {
          "requires" : {
-            "Test::Deep" : 0,
-            "Test::Fatal" : 0,
+            "Test::Deep" : "0",
+            "Test::Deep::UnorderedPairs" : "0",
+            "Test::Fatal" : "0",
             "Test::More" : "0.88"
          }
       },
@@ -37,38 +38,33 @@
       },
       "runtime" : {
          "requires" : {
-            "Class::Method::Modifiers" : 0,
+            "Class::Method::Modifiers" : "0",
             "Package::Stash" : "0.34",
-            "Scalar::Util" : 0,
-            "Try::Tiny" : 0,
-            "namespace::clean" : 0
+            "Scalar::Util" : "0",
+            "Try::Tiny" : "0",
+            "namespace::clean" : "0"
          }
       }
    },
    "provides" : {
       "Test::Mock::Redis" : {
          "file" : "lib/Test/Mock/Redis.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       },
       "Test::Mock::Redis::Hash" : {
-         "file" : "lib/Test/Mock/Redis.pm",
-         "version" : 0
+         "file" : "lib/Test/Mock/Redis.pm"
       },
       "Test::Mock::Redis::List" : {
-         "file" : "lib/Test/Mock/Redis.pm",
-         "version" : 0
+         "file" : "lib/Test/Mock/Redis.pm"
       },
       "Test::Mock::Redis::PossiblyVolatile" : {
-         "file" : "lib/Test/Mock/Redis.pm",
-         "version" : 0
+         "file" : "lib/Test/Mock/Redis.pm"
       },
       "Test::Mock::Redis::Set" : {
-         "file" : "lib/Test/Mock/Redis.pm",
-         "version" : 0
+         "file" : "lib/Test/Mock/Redis.pm"
       },
       "Test::Mock::Redis::ZSet" : {
-         "file" : "lib/Test/Mock/Redis.pm",
-         "version" : 0
+         "file" : "lib/Test/Mock/Redis.pm"
       }
    },
    "release_status" : "stable",
@@ -83,5 +79,5 @@
          "url" : "http://github.com/jlavallee/Test-Mock-Redis/"
       }
    },
-   "version" : "0.11"
+   "version" : "0.12"
 }
