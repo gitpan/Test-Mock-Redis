@@ -17,11 +17,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.12
+Version 0.13
 
 =cut
 
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 
 =head1 SYNOPSIS
 
@@ -61,14 +61,31 @@ returned, with all data preserved.
 
     It accepts the "server" argument, just like Redis.pm's new.
 
+=head2 num_databases
+
+Redis ships with a default of 16 databases, and that's what this module 
+handles by default. If you need to change that, do
+
+    use Test::Mock::Redis num_databases => 21;
+
 =cut
+
+my $NUM_DBS = 16;
+
+sub import {
+    my ($class, %args) = @_;
+
+    if ($args{num_databases}){
+        $NUM_DBS = $args{num_databases};
+    }
+}
+
 
 sub _new_db {
     tie my %hash, 'Test::Mock::Redis::PossiblyVolatile';
     return \%hash;
 }
 
-my $NUM_DBS = 16;
 
 sub _defaults {
     my @hex = (0..9, 'a'..'f');
@@ -76,6 +93,7 @@ sub _defaults {
         _quit      => 0,
         _shutdown  => 0,
         _stash     => [ map { _new_db } (1..$NUM_DBS) ],
+        _num_dbs   => $NUM_DBS,
         _db_index  => 0,
         _up_since  => time,
         _last_save => time,
@@ -1113,6 +1131,8 @@ The following people have contributed to I<Test::Mock::Redis>:
 
 =item * Karen Etheridge
 
+=item * Kevin Goess
+
 =back
 
 =head1 LICENSE AND COPYRIGHT
@@ -1257,6 +1277,7 @@ my %no_transaction_wrap_methods = (
     exec => 1,
     discard => 1,
     quit => 1,
+    import => 1,
 );
 
 my @transaction_wrapped_methods =
