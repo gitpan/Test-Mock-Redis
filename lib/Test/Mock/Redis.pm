@@ -17,11 +17,11 @@ Test::Mock::Redis - use in place of Redis for unit testing
 
 =head1 VERSION
 
-Version 0.14
+Version 0.15
 
 =cut
 
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 
 =head1 SYNOPSIS
 
@@ -320,11 +320,14 @@ sub msetnx {
 }
 
 sub del {
-    my ( $self, $key ) = @_;
+    my ( $self, @keys ) = @_;
 
-    my $ret = $self->exists($key);
+    my $ret = 0;
 
-    delete $self->_stash->{$key};
+    for my $key (@keys) {
+        $ret++ if $self->exists($key);
+        delete $self->_stash->{$key};
+    }
 
     return $ret;
 }
@@ -1142,9 +1145,13 @@ The following people have contributed to I<Test::Mock::Redis>:
 
 =over
 
+=item * Ian Burrell
+
 =item * Karen Etheridge
 
 =item * Kevin Goess
+
+=item * Neil Bowers
 
 =back
 
@@ -1276,6 +1283,22 @@ sub discard {
 
     # discard all the accumulated commands, without executing them
     delete $self->{_multi_commands};
+
+    return 'OK';
+}
+
+sub watch {
+    my ($self) = shift;
+
+    confess '[watch] ERR wrong number of arguments for \'watch\' command' unless @_;
+
+    return 'OK';
+}
+
+sub unwatch {
+    my ($self) = shift;
+
+    confess '[error] ERR wrong number of arguments for \'unwatch\' command' if @_;
 
     return 'OK';
 }

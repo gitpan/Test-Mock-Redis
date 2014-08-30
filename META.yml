@@ -3,18 +3,18 @@ abstract: 'use Redis; without redis'
 author:
   - 'Jeff Lavallee <jeff@zeroclue.com>'
 build_requires:
-  Test::Deep: 0
-  Test::Deep::UnorderedPairs: 0
-  Test::Fatal: 0
-  Test::More: 0.88
+  Test::Deep: '0'
+  Test::Deep::UnorderedPairs: '0'
+  Test::Fatal: '0'
+  Test::More: '0.88'
 configure_requires:
-  Module::Build: 0.4
+  Module::Build: '0.4'
 dynamic_config: 1
-generated_by: 'Module::Build version 0.4005, CPAN::Meta::Converter version 2.131560'
+generated_by: 'Module::Build version 0.4208, CPAN::Meta::Converter version 2.142060'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
-  version: 1.4
+  version: '1.4'
 name: Test-Mock-Redis
 no_index:
   package:
@@ -26,7 +26,7 @@ no_index:
 provides:
   Test::Mock::Redis:
     file: lib/Test/Mock/Redis.pm
-    version: 0.14
+    version: '0.15'
   Test::Mock::Redis::Hash:
     file: lib/Test/Mock/Redis.pm
   Test::Mock::Redis::List:
@@ -38,13 +38,13 @@ provides:
   Test::Mock::Redis::ZSet:
     file: lib/Test/Mock/Redis.pm
 requires:
-  Class::Method::Modifiers: 0
-  Package::Stash: 0.34
-  Scalar::Util: 0
-  Try::Tiny: 0
-  namespace::clean: 0
+  Class::Method::Modifiers: '0'
+  Package::Stash: '0.34'
+  Scalar::Util: '0'
+  Try::Tiny: '0'
+  namespace::clean: '0'
 resources:
   bugtracker: http://rt.cpan.org/NoAuth/Bugs.html?Dist=Test-Mock-Redis
   license: http://dev.perl.org/licenses/
   repository: http://github.com/jlavallee/Test-Mock-Redis/
-version: 0.14
+version: '0.15'
